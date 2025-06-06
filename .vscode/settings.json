@@ -1,0 +1,15 @@
+{
+  "editor.formatOnSave": true,
+  "sqltools.connections": [
+    {
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 5429,
+      "askForPassword": true,
+      "driver": "PostgreSQL",
+      "name": "postgres",
+      "database": "reservation",
+      "username": "postgres"
+    }
+  ]
+}
