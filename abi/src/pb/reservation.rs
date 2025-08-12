@@ -36,24 +36,33 @@ pub struct ConfirmResponse {
     #[prost(message, optional, tag = "1")]
     pub reservation: ::core::option::Option<Reservation>,
 }
+#[derive(derive_builder::Builder)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ReservationQuery {
     #[prost(string, tag = "1")]
+    #[builder(setter(into), default)]
     pub user_id: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
+    #[builder(setter(into), default)]
     pub resource_id: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "3")]
+    #[builder(setter(into, strip_option))]
     pub start: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(message, optional, tag = "4")]
+    #[builder(setter(into, strip_option))]
     pub end: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(enumeration = "ReservationStatus", tag = "5")]
+    #[builder(setter(into), default)]
     pub status: i32,
     #[prost(int32, tag = "6")]
+    #[builder(setter(into), default)]
     pub page: i32,
     #[prost(int32, tag = "7")]
+    #[builder(setter(into), default)]
     pub page_size: i32,
     /// sort direction
     #[prost(bool, tag = "8")]
+    #[builder(setter(into), default)]
     pub desc: bool,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]

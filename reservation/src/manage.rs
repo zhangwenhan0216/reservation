@@ -1,5 +1,5 @@
 use crate::{ReservationManage, Rsvp};
-use abi::{Error, ReservationId, ReservationStatus};
+use abi::{Error, ReservationId, ReservationStatus, Validator};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{postgres::types::PgRange, PgPool, Row};
@@ -41,7 +41,7 @@ impl Rsvp for ReservationManage {
     let rsvp: abi::Reservation = sqlx::query_as("UPDATE rsvp.reservations SET status = 'confirmed' WHERE id = $1 AND STATUS = 'pending' RETURNING *")
     .bind(id).fetch_one(&self.pool).await?;
 
-    Ok(rsvp.into())
+    Ok(rsvp)
   }
 
   async fn update_note(
@@ -57,7 +57,7 @@ impl Rsvp for ReservationManage {
     .fetch_one(&self.pool)
     .await?;
 
-    Ok(rsvp.into())
+    Ok(rsvp)
   }
 
   async fn get(&self, id: ReservationId) -> Result<abi::Reservation, Error> {
@@ -67,7 +67,7 @@ impl Rsvp for ReservationManage {
         .fetch_one(&self.pool)
         .await?;
 
-    Ok(rsvp.into())
+    Ok(rsvp)
   }
 
   async fn delete(&self, id: ReservationId) -> Result<abi::Reservation, Error> {
@@ -77,7 +77,7 @@ impl Rsvp for ReservationManage {
         .fetch_one(&self.pool)
         .await?;
 
-    Ok(rsvp.into())
+    Ok(rsvp)
   }
 
   async fn query(
@@ -88,12 +88,16 @@ impl Rsvp for ReservationManage {
     let resource_id = str_to_option(&query.resource_id);
     let status = ReservationStatus::try_from(query.status)
       .unwrap_or(ReservationStatus::Pending);
-
+    let range = query.get_timespan();
     let rsvps =
-      sqlx::query_as("SELECT * FROM rsvp.query($1, $2, $3, $4, $5, $6, $7)")
+      sqlx::query_as("SELECT * FROM rsvp.query($1, $2, $3::rsvp.reservation_status, $4, $5, $6, $7)")
         .bind(user_id)
         .bind(resource_id)
-        .bind(status)
+        .bind(status.to_string())
+        .bind(range)
+        .bind(query.page)
+        .bind(query.page_size)
+        .bind(query.desc)
         .fetch_all(&self.pool)
         .await?;
 
@@ -117,11 +121,13 @@ impl ReservationManage {
 
 #[cfg(test)]
 mod tests {
+
   use super::*;
   use abi::{
     convert_local_time_to_utc, Reservation, ReservationConflict,
-    ReservationConflictInfo, ReservationWindow,
+    ReservationConflictInfo, ReservationQueryBuilder, ReservationWindow,
   };
+  use prost_types::Timestamp;
   #[sqlx_database_tester::test(pool(
     variable = "migrated_pool",
     migrations = "../migrations"
@@ -304,5 +310,35 @@ mod tests {
 
     let ret = pool.get(rsvp1.id.clone()).await;
     assert_eq!(ret, Err(Error::NotFound))
+  }
+
+  #[sqlx_database_tester::test(pool(
+    variable = "migrated_pool",
+    migrations = "../migrations"
+  ))]
+  async fn query_reservation_should_work() {
+    let pool = ReservationManage::new(migrated_pool);
+
+    let rsvp = Reservation::new_pending(
+      "xiaozhangId",
+      "testResourceId",
+      convert_local_time_to_utc("2024-01-21 19:00:00"),
+      convert_local_time_to_utc("2024-01-22 12:00:00"),
+      "test_reserve_should_work_for_valid_window",
+    );
+
+    pool.reserve(rsvp).await.unwrap();
+
+    let query = ReservationQueryBuilder::default()
+      .user_id("xiaozhangId")
+      .start("2024-01-20 19:00:00".parse::<Timestamp>().unwrap())
+      .end("2024-01-23 12:00:00".parse::<Timestamp>().unwrap())
+      .status(ReservationStatus::Pending as i32)
+      .build()
+      .unwrap();
+
+    let result = pool.query(query).await.unwrap();
+
+    assert_eq!(result.len(), 1);
   }
 }
