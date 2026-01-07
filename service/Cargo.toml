@@ -1,6 +1,23 @@
 [package]
-name = "service"
+name = "reservation-service"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+abi = { version = "0.1.0", path = "../abi" }
+async-trait = "0.1.89"
+futures = { version = "0.3.31", default-features = false }
+lazy_static = "1.5.0"
+reservation = { version = "0.1.0", path = "../reservation" }
+shellexpand = "3.1.1"
+tokio = { version = "1.47.1", features = ["full"] }
+tonic = { version = "0.12.3", features = ["gzip"] }
+
+[dev-dependencies]
+sqlx = { version = "0.6.3", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "uuid",
+    "chrono",
+] }
+sqlx-db-tester = { path = "../sqlx-db-tester" }

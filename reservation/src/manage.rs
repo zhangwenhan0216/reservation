@@ -1,8 +1,11 @@
 use crate::{ReservationManage, Rsvp};
-use abi::{Error, ReservationId, ReservationStatus, Validator};
+use abi::{DbConfig, Error, ReservationId, ReservationStatus, Validator};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::{postgres::types::PgRange, PgPool, Row};
+use sqlx::{
+  postgres::{types::PgRange, PgPoolOptions},
+  PgPool, Row,
+};
 
 #[async_trait]
 impl Rsvp for ReservationManage {
@@ -38,6 +41,8 @@ impl Rsvp for ReservationManage {
     &self,
     id: ReservationId,
   ) -> Result<abi::Reservation, Error> {
+    id.validate()?;
+
     let rsvp: abi::Reservation = sqlx::query_as("UPDATE rsvp.reservations SET status = 'confirmed' WHERE id = $1 AND STATUS = 'pending' RETURNING *")
     .bind(id).fetch_one(&self.pool).await?;
 
@@ -49,6 +54,8 @@ impl Rsvp for ReservationManage {
     id: ReservationId,
     note: String,
   ) -> Result<abi::Reservation, Error> {
+    id.validate()?;
+
     let rsvp: abi::Reservation = sqlx::query_as(
       "UPDATE rsvp.reservations SET note = $1 WHERE id = $2 RETURNING *",
     )
@@ -61,6 +68,8 @@ impl Rsvp for ReservationManage {
   }
 
   async fn get(&self, id: ReservationId) -> Result<abi::Reservation, Error> {
+    id.validate()?;
+
     let rsvp: abi::Reservation =
       sqlx::query_as("SELECT * FROM rsvp.reservations WHERE id = $1")
         .bind(id)
@@ -71,6 +80,8 @@ impl Rsvp for ReservationManage {
   }
 
   async fn delete(&self, id: ReservationId) -> Result<abi::Reservation, Error> {
+    id.validate()?;
+
     let rsvp: abi::Reservation =
       sqlx::query_as("DELETE FROM rsvp.reservations WHERE id = $1 RETURNING *")
         .bind(id)
@@ -103,6 +114,51 @@ impl Rsvp for ReservationManage {
 
     Ok(rsvps)
   }
+  async fn filter(
+    &self,
+    query: abi::ReservationFilter,
+  ) -> Result<(abi::FilterPager, Vec<abi::Reservation>), Error> {
+    let user_id = str_to_option(&query.user_id);
+    let resource_id = str_to_option(&query.resource_id);
+    let status = ReservationStatus::try_from(query.status)
+      .unwrap_or(ReservationStatus::Pending);
+    let page_size = if query.page_size < 10 || query.page_size > 100 {
+      10
+    } else {
+      query.page_size
+    };
+    let rsvps: Vec<abi::Reservation> =
+      sqlx::query_as("SELECT * FROM rsvp.filter($1, $2, $3::rsvp.reservation_status, $4, $5, $6)")
+        .bind(user_id)
+        .bind(resource_id)
+        .bind(status.to_string())
+        .bind(query.cursor)
+        .bind(page_size)
+        .bind(query.desc)
+        .fetch_all(&self.pool)
+        .await?;
+
+    let len = rsvps.len();
+
+    let has_prev = len > 0 && rsvps[0].id == query.cursor;
+    let start = if has_prev { 1 } else { 0 };
+
+    let has_end = (len - start) as i32 > page_size;
+    let end = if has_end { len - 1 } else { len };
+
+    let result = rsvps[start..end].to_vec();
+
+    let prev = if has_prev { rsvps[start - 1].id } else { -1 };
+
+    let next = if has_end { rsvps[end - 1].id } else { -1 };
+    let pager = abi::FilterPager {
+      prev,
+      next,
+      total: 0,
+    };
+
+    Ok((pager, result))
+  }
 }
 
 fn str_to_option(s: &str) -> Option<&str> {
@@ -117,6 +173,14 @@ impl ReservationManage {
   pub fn new(pool: PgPool) -> Self {
     Self { pool }
   }
+  pub async fn from_config(config: &DbConfig) -> Result<PgPool, Error> {
+    let pool = PgPoolOptions::default()
+      .max_connections(config.max_connections)
+      .connect(&config.get_url())
+      .await?;
+
+    Ok(pool)
+  }
 }
 
 #[cfg(test)]
@@ -125,7 +189,8 @@ mod tests {
   use super::*;
   use abi::{
     convert_local_time_to_utc, Reservation, ReservationConflict,
-    ReservationConflictInfo, ReservationQueryBuilder, ReservationWindow,
+    ReservationConflictInfo, ReservationFilterBuilder, ReservationQueryBuilder,
+    ReservationWindow,
   };
   use prost_types::Timestamp;
   #[sqlx_database_tester::test(pool(
@@ -340,5 +405,37 @@ mod tests {
     let result = pool.query(query).await.unwrap();
 
     assert_eq!(result.len(), 1);
+  }
+  #[sqlx_database_tester::test(pool(
+    variable = "migrated_pool",
+    migrations = "../migrations"
+  ))]
+  async fn filter_reservation_should_work() {
+    let pool = ReservationManage::new(migrated_pool);
+
+    let rsvp = Reservation::new_pending(
+      "xiaozhangId",
+      "testResourceId",
+      convert_local_time_to_utc("2024-01-21 19:00:00"),
+      convert_local_time_to_utc("2024-01-22 12:00:00"),
+      "test_reserve_should_work_for_valid_window",
+    );
+
+    pool.reserve(rsvp).await.unwrap();
+
+    let filter = ReservationFilterBuilder::default()
+      .user_id("xiaozhangId")
+      .status(ReservationStatus::Pending as i32)
+      .build()
+      .unwrap();
+
+    let (pager, rsvps) = pool.filter(filter).await.unwrap();
+
+    println!("pager: {:?}, rsvps: {:?}", pager, rsvps);
+
+    assert_eq!(pager.prev, -1);
+    assert_eq!(pager.next, -1);
+
+    assert_eq!(rsvps.len(), 1);
   }
 }

@@ -44,13 +44,63 @@ message ReservationQuery {
     // sort direction
     bool desc = 8;
 }
+message ReservationFilter {
+    string user_id = 1;
+    string resource_id = 2;
+    ReservationStatus status = 3;
+    int64 cursor = 4;
+    int32 page_size = 5;
+    // sort direction
+    bool desc = 6;
+}
+message FilterPager {
+    int64 prev = 1;
+    int64 next = 2;
+    int64 total = 3;
+}
+message FilterResponse {
+    repeated Reservation reservations = 1;
+    FilterPager pager = 2;
+}
+message FilterRequest {
+    ReservationFilter filter = 1;
+}
 message QueryRequest {
     ReservationQuery query = 1;
 }
+message GetRequest {
+    int64 id = 1;
+}
+message GetResponse {
+    Reservation reservation = 1;
+}
+message UpdateRequest {
+    int64 id = 1;
+    string note = 2;
+}
+message UpdateResponse {
+    Reservation reservation = 1;
+}
+message CancelRequest {
+    int64 id = 1;
+}
+message CancelResponse {
+    Reservation reservation = 1;
+}
 service ReservationService {
     rpc reserve(ReserveRequest) returns (ReserveResponse);
+    // update status to CONFIRMED
     rpc confirm(ConfirmRequest) returns (ConfirmResponse);
+    // update only note
+    rpc update(UpdateRequest) returns (UpdateResponse);
+    // cancel reservation
+    rpc cancel(CancelRequest) returns (CancelResponse);
+    // get reservation by id
+    rpc get(GetRequest) returns (GetResponse);
+    // query reservations with pagination
     rpc query(QueryRequest) returns (stream Reservation);
+    // filter reservations order by reservation id
+    rpc filter(FilterRequest) returns (FilterResponse);
 }
 
 

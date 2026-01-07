@@ -2,7 +2,10 @@ fn main() {
   tonic_build::configure()
     .out_dir("src/pb")
     .with_sql_type(&["reservation.ReservationStatus"])
-    .with_builder(&["reservation.ReservationQuery"])
+    .with_builder(&[
+      "reservation.ReservationQuery",
+      "reservation.ReservationFilter",
+    ])
     .with_bulider_into(
       "reservation.ReservationQuery",
       &[
@@ -10,6 +13,17 @@ fn main() {
         "resource_id",
         "status",
         "page",
+        "page_size",
+        "desc",
+      ],
+    )
+    .with_bulider_into(
+      "reservation.ReservationFilter",
+      &[
+        "user_id",
+        "resource_id",
+        "status",
+        "cursor",
         "page_size",
         "desc",
       ],
@@ -44,7 +58,7 @@ impl BuilderExt for tonic_build::Builder {
   fn with_bulider_into(self, path: &str, fields: &[&str]) -> Self {
     fields.iter().fold(self, |builder, field| {
       builder.field_attribute(
-        &format!("{}.{}", path, field),
+        format!("{}.{}", path, field),
         "#[builder(setter(into), default)]",
       )
     })
@@ -53,7 +67,7 @@ impl BuilderExt for tonic_build::Builder {
   fn with_builder_option(self, path: &str, fields: &[&str]) -> Self {
     fields.iter().fold(self, |builder, field| {
       builder.field_attribute(
-        &format!("{}.{}", path, field),
+        format!("{}.{}", path, field),
         "#[builder(setter(into, strip_option))]",
       )
     })

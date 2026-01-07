@@ -14,7 +14,7 @@ use sqlx::{
   },
 };
 
-use crate::{convert_to_utc_time, Error};
+use crate::{convert_to_utc_time, Error, Validator};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[sqlx(type_name = "reservation_status", rename_all = "lowercase")]
@@ -46,11 +46,20 @@ fn get_timespan(
   start: Option<&Timestamp>,
   end: Option<&Timestamp>,
 ) -> PgRange<DateTime<Utc>> {
-  let start = convert_to_utc_time(start.unwrap().clone());
-  let end = convert_to_utc_time(end.unwrap().clone());
+  let start = convert_to_utc_time(*start.unwrap());
+  let end = convert_to_utc_time(*end.unwrap());
 
   PgRange {
     start: Bound::Included(start),
     end: Bound::Excluded(end),
+  }
+}
+
+impl Validator for ReservationId {
+  fn validate(&self) -> Result<(), Error> {
+    if *self <= 0 {
+      return Err(Error::InvalidReservationId(*self));
+    }
+    Ok(())
   }
 }

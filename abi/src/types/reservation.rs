@@ -32,8 +32,8 @@ impl Reservation {
   }
 
   pub fn get_timespan(&self) -> Range<DateTime<Utc>> {
-    let start = convert_to_utc_time(self.start.unwrap().clone());
-    let end = convert_to_utc_time(self.end.unwrap().clone());
+    let start = convert_to_utc_time(self.start.unwrap());
+    let end = convert_to_utc_time(self.end.unwrap());
 
     Range { start, end }
   }
